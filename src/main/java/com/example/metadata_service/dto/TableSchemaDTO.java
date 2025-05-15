@@ -108,6 +108,9 @@ public class TableSchemaDTO {
         private Integer apiId;
         private List<DependencyDTO> dependencies;
         private Boolean isDropdown;
+        private Integer optionsSourceId; // New: From metadata_displays
+        private Integer optionKeyId; // New: From metadata_displays
+
     }
 
     @Getter

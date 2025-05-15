@@ -2,7 +2,8 @@ package com.example.metadata_service.utility;
 
 import com.example.metadata_service.dto.TableSchemaDTO;
 import com.example.metadata_service.entity.Employee;
-import com.example.metadata_service.entity.FieldOptions;
+import com.example.metadata_service.entity.MetadataOptions;
+import com.example.metadata_service.entity.MetadataOptionsTable;
 import com.example.metadata_service.exception.ValidationException;
 import com.example.metadata_service.repository.EmployeeRepository;
 
@@ -146,21 +147,15 @@ import java.util.Map;
 ////////////////////////////////////
 
 
-
-
-
-import com.example.metadata_service.dto.TableSchemaDTO;
-import com.example.metadata_service.entity.Employee;
-import com.example.metadata_service.repository.EmployeeRepository;
-import com.example.metadata_service.repository.FieldOptionsRepository;
-import com.example.metadata_service.repository.MetadataFieldOptionsRepository;
+import com.example.metadata_service.repository.MetadataDisplaysRepository;
+import com.example.metadata_service.repository.MetadataOptionsRepository;
+import com.example.metadata_service.repository.MetadataOptionsTableRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 
 //
@@ -232,16 +227,14 @@ import java.util.regex.Pattern;
 ////////////////////////////////////////////////
 
 
+
 @Component
 public class MetadataValidatorUtil {
-    private final FieldOptionsRepository fieldOptionsRepository;
-    private final MetadataFieldOptionsRepository fieldOptionsConfigRepository;
 
-    @Autowired
-    public MetadataValidatorUtil(FieldOptionsRepository fieldOptionsRepository, MetadataFieldOptionsRepository fieldOptionsConfigRepository) {
-        this.fieldOptionsRepository = fieldOptionsRepository;
-        this.fieldOptionsConfigRepository = fieldOptionsConfigRepository;
-    }
+    @Autowired private MetadataDisplaysRepository displaysRepository;
+    @Autowired private MetadataOptionsRepository optionsRepository;
+    @Autowired private MetadataOptionsTableRepository optionsTableRepository;
+    @Autowired private EmployeeRepository employeeRepository;
 
     public List<String> validateEmployeeData(Map<String, Object> data, TableSchemaDTO schema, EmployeeRepository employeeRepository) {
         List<String> errors = new ArrayList<>();
@@ -296,14 +289,9 @@ public class MetadataValidatorUtil {
                 if (isDropdown) {
                     try {
                         String stringValue = value.toString();
-                        Integer optionGroupId = getOptionGroupId(schema.getTenantId(), schema.getAppId(), schema.getTableId(), field.getFieldId());
-                        boolean isValid = fieldOptionsRepository
-                                .findByTenantIdAndAppIdAndTableIdAndFieldIdAndOptionGroupIdAndIsActive(
-                                        schema.getTenantId(), schema.getAppId(), schema.getTableId(), field.getFieldId(),
-                                        optionGroupId, true)
-                                .stream()
-                                .anyMatch(opt -> opt.getOptionValue().equals(stringValue));
-                        if (!isValid) {
+                        Set<String> validOptions = getValidOptions(
+                                schema.getTenantId(), schema.getAppId(), schema.getTableId(), field);
+                        if (!validOptions.contains(stringValue)) {
                             errors.add(fieldName + " has invalid value '" + stringValue + "' for tenant " + schema.getTenantId());
                         }
                     } catch (Exception e) {
@@ -323,15 +311,25 @@ public class MetadataValidatorUtil {
         return errors;
     }
 
-    private Integer getOptionGroupId(Integer tenantId, Integer appId, Integer tableId, Integer fieldId) {
-        return fieldOptionsConfigRepository
-                .findByTenantIdAndAppIdAndTableIdAndFieldId(tenantId, appId, tableId, fieldId)
-                .filter(config -> config.getIsActive() && config.getIsDropdown())
-                .map(config -> config.getOptionGroupId())
-                .orElseThrow(() -> new ValidationException("No active dropdown configuration found for fieldId=" + fieldId));
+    private Set<String> getValidOptions(Integer tenantId, Integer appId, Integer tableId, TableSchemaDTO.FieldSchemaDTO field) {
+        if (field.getOptionsSourceId() == 5001 && field.getOptionKeyId() != null) { // Internal source
+            MetadataOptionsTable optionsTable = optionsTableRepository
+                    .findByOptionsTableIdAndSourceFieldIdAndOptionKeyId(tableId, field.getFieldId(), field.getOptionKeyId())
+                    .orElse(null);
+            if (optionsTable != null && optionsTable.getOptionsTableId().equals(3004)) { // employees table
+                if (field.getFieldId() == 1) { // first_name
+                    return employeeRepository.findDistinctFirstNameByTenantId(tenantId).stream()
+                            .collect(Collectors.toSet());
+                }
+            }
+            List<MetadataOptions> options = optionsRepository
+                    .findByTenantIdAndAppIdAndTableIdAndOptionKeyIdOrderByDisplayOrder(
+                            tenantId, appId, tableId, field.getOptionKeyId());
+            return options.stream().map(MetadataOptions::getOptionValue).collect(Collectors.toSet());
+        }
+        return Set.of();
     }
 }
-
 
 
 

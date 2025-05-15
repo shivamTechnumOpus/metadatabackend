@@ -48,9 +48,6 @@ public class MetadataApp {
     @JsonIgnore
     private List<MetadataRelationships> relationships;
 
-    @OneToMany(mappedBy = "app", fetch = FetchType.LAZY)
-    @JsonIgnore
-    private List<MetadataGroupFieldMapping> groupFieldMappings;
 
     @Override
     public String toString() {

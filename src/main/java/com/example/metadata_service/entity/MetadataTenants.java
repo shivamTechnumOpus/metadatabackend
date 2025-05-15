@@ -66,9 +66,7 @@ public class MetadataTenants {
     @JsonBackReference
     private List<MetadataRelationships> relationships;
 
-    @OneToMany(mappedBy = "tenant", fetch = FetchType.LAZY)
-    @JsonBackReference
-    private List<MetadataGroupFieldMapping> groupFieldMappings;
+
     @Override
     public String toString() {
         return "MetadataTenants{tenantId=" + tenantId + ", tenantName='" + tenantName + "', tenantDomain='" + tenantDomain + "'}";

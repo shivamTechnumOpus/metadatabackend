@@ -10,6 +10,9 @@ import java.util.List;
 @Setter
 @ToString
 public class FieldOptionsDTO {
+    private Integer tenantId;
+    private Integer appId;
+    private Integer tableId;
     private Integer fieldId;
     private String fieldName;
     private List<Option> options;

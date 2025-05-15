@@ -433,9 +433,9 @@ import java.util.stream.Collectors;
 //
 
 //////////////////////////////////////
-
 @Service
 public class MetadataService {
+
     @Autowired private MetadataTablesRepository tablesRepository;
     @Autowired private MetadataTableStructureRepository tableStructureRepository;
     @Autowired private MetadataStandardFieldsRepository standardFieldsRepository;
@@ -445,8 +445,9 @@ public class MetadataService {
     @Autowired private MetadataFieldApiRelationshipRepository apiRelationshipRepository;
     @Autowired private EmployeeRepository employeeRepository;
     @Autowired private MetadataTenantsRepository tenantsRepository;
-    @Autowired private MetadataFieldOptionsRepository fieldOptionsConfigRepository;
-    @Autowired private FieldOptionsRepository fieldOptionsRepository;
+    @Autowired private MetadataDisplaysRepository displaysRepository;
+    @Autowired private MetadataOptionsRepository optionsRepository;
+    @Autowired private MetadataOptionsTableRepository optionsTableRepository;
     @Autowired private MetadataValidatorUtil validatorUtil;
 
     public TableSchemaDTO getTableSchema(Integer tenantId, Integer tableId, Integer appId) {
@@ -481,10 +482,14 @@ public class MetadataService {
             fieldSchema.setIsActive(field.getIsActive());
 
             // Check for dropdown configuration
-            fieldOptionsConfigRepository.findByTenantIdAndAppIdAndTableIdAndFieldId(tenantId, appId, tableId, field.getFieldId())
-                    .ifPresent(config -> fieldSchema.setIsDropdown(config.getIsDropdown() && config.getIsActive()));
+            displaysRepository.findByTenantIdAndAppIdAndTableIdAndFieldId(tenantId, appId, tableId, field.getFieldId())
+                    .ifPresent(display -> {
+                        fieldSchema.setIsDropdown(display.getOptionKeyId() != null);
+                        fieldSchema.setOptionsSourceId(display.getOptionsSourceId());
+                        fieldSchema.setOptionKeyId(display.getOptionKeyId());
+                    });
 
-            // Fetch all active overrides for this field
+            // Fetch overrides
             List<MetadataFieldOverrides> overrides = fieldOverridesRepository
                     .findAllByTenantIdAndAppIdAndTableIdAndFieldId(tenantId, appId, tableId, field.getFieldId());
             for (MetadataFieldOverrides override : overrides) {
@@ -581,17 +586,15 @@ public class MetadataService {
         Employee employee = new Employee();
         employee.setTenant(tenant);
 
-        // Apply field values, using defaultValue for missing fields if isActive=true
         for (TableSchemaDTO.FieldSchemaDTO field : schema.getFields()) {
             String fieldName = field.getFieldName();
             Object value = data.get(fieldName);
             boolean isActive = field.getOverriddenIsActive() != null ? field.getOverriddenIsActive() : field.getIsActive();
+            String defaultValue = field.getOverriddenDefaultValue() != null ? field.getOverriddenDefaultValue() : field.getDefaultValue();
 
             if (!isActive) {
                 continue;
             }
-
-            String defaultValue = field.getOverriddenDefaultValue() != null ? field.getOverriddenDefaultValue() : field.getDefaultValue();
 
             switch (fieldName) {
                 case "first_name":
@@ -659,160 +662,54 @@ public class MetadataService {
     }
 
     public FieldOptionsDTO getFieldOptions(Integer tenantId, Integer appId, Integer tableId, Integer fieldId, boolean refresh) {
-        MetadataFieldOptions config = fieldOptionsConfigRepository
-                .findByTenantIdAndAppIdAndTableIdAndFieldId(tenantId, appId, tableId, fieldId)
-                .filter(c -> c.getIsDropdown() && c.getIsActive())
+        MetadataDisplays display = displaysRepository.findByTenantIdAndAppIdAndTableIdAndFieldId(tenantId, appId, tableId, fieldId)
+                .filter(d -> d.getOptionKeyId() != null)
                 .orElseThrow(() -> new ResourceNotFoundException("No dropdown configuration found for tenantId=" + tenantId + ", appId=" + appId + ", tableId=" + tableId + ", fieldId=" + fieldId));
 
-        // TODO: Add caching with Redis
-        // if (!refresh) { check cache }
-
-        List<FieldOptions> options = fieldOptionsRepository
-                .findByTenantIdAndAppIdAndTableIdAndFieldIdAndOptionGroupIdAndIsActive(
-                        tenantId, appId, tableId, fieldId, config.getOptionGroupId(), true);
-
         FieldOptionsDTO dto = new FieldOptionsDTO();
+        dto.setTenantId(tenantId);
+        dto.setAppId(appId);
+        dto.setTableId(tableId);
         dto.setFieldId(fieldId);
         dto.setFieldName(standardFieldsRepository.findById(fieldId)
                 .map(MetadataStandardFields::getFieldName)
                 .orElse("unknown"));
-        dto.setOptions(options.stream().map(opt -> {
-            FieldOptionsDTO.Option option = new FieldOptionsDTO.Option();
-            option.setValue(opt.getOptionValue());
-            option.setDisplayName(opt.getDisplayName());
-            option.setSortOrder(opt.getSortOrder());
-            return option;
-        }).collect(Collectors.toList()));
 
-        // TODO: Cache result
+        List<FieldOptionsDTO.Option> options = new ArrayList<>();
+        if (display.getOptionsSourceId() == 5001) { // Internal source
+            MetadataOptionsTable optionsTable = optionsTableRepository
+                    .findByOptionsTableIdAndSourceFieldIdAndOptionKeyId(tableId, fieldId, display.getOptionKeyId())
+                    .orElse(null);
+            if (optionsTable != null && optionsTable.getOptionsTableId().equals(3004)) { // employees table
+                List<String> values = new ArrayList<>();
+                if (fieldId == 1) { // first_name
+                    values = employeeRepository.findDistinctFirstNameByTenantId(tenantId);
+                }
+                options = values.stream()
+                        .map(value -> {
+                            FieldOptionsDTO.Option option = new FieldOptionsDTO.Option();
+                            option.setValue(value);
+                            option.setDisplayName(value);
+                            return option;
+                        })
+                        .collect(Collectors.toList());
+            } else {
+                List<MetadataOptions> staticOptions = optionsRepository
+                        .findByTenantIdAndAppIdAndTableIdAndOptionKeyIdOrderByDisplayOrder(tenantId, appId, tableId, display.getOptionKeyId());
+                options = staticOptions.stream()
+                        .map(opt -> {
+                            FieldOptionsDTO.Option option = new FieldOptionsDTO.Option();
+                            option.setValue(opt.getOptionValue());
+                            option.setDisplayName(opt.getOptionValue());
+                            return option;
+                        })
+                        .collect(Collectors.toList());
+            }
+        }
+
+        dto.setOptions(options);
         return dto;
     }
-
-    @Transactional
-    public Integer saveFieldOptionsConfig(FieldOptionsConfigDTO dto) {
-        validateConfig(dto);
-
-        MetadataFieldOptions config = fieldOptionsConfigRepository
-                .findByTenantIdAndAppIdAndTableIdAndFieldId(
-                        dto.getTenantId(), dto.getAppId(), dto.getTableId(), dto.getFieldId())
-                .orElse(new MetadataFieldOptions());
-
-        config.setTenant(tenantsRepository.findById(dto.getTenantId())
-                .orElseThrow(() -> new ResourceNotFoundException("Tenant not found: " + dto.getTenantId())));
-        config.setApp(tablesRepository.findById(dto.getTableId())
-                .map(MetadataTables::getApp)
-                .orElseThrow(() -> new ResourceNotFoundException("Table not found: " + dto.getTableId())));
-        config.setTable(tablesRepository.findById(dto.getTableId())
-                .orElseThrow(() -> new ResourceNotFoundException("Table not found: " + dto.getTableId())));
-        config.setField(standardFieldsRepository.findById(dto.getFieldId())
-                .orElseThrow(() -> new ResourceNotFoundException("Field not found: " + dto.getFieldId())));
-        config.setIsDropdown(dto.getIsDropdown());
-        config.setOptionGroupId(dto.getIsDropdown() ? dto.getOptionGroupId() : null);
-        config.setIsActive(dto.getIsActive() != null ? dto.getIsActive() : true);
-        config.setUpdatedAt(LocalDateTime.now());
-
-        MetadataFieldOptions saved = fieldOptionsConfigRepository.save(config);
-        // TODO: Invalidate cache
-        return saved.getOptionConfigId();
-    }
-
-    @Transactional
-    public List<Integer> saveFieldOptionsValues(FieldOptionsValuesDTO dto) {
-        validateValues(dto);
-
-        List<FieldOptions> existingOptions = fieldOptionsRepository
-                .findByTenantIdAndAppIdAndTableIdAndFieldIdAndOptionGroupIdAndIsActive(
-                        dto.getTenantId(), dto.getAppId(), dto.getTableId(), dto.getFieldId(), dto.getOptionGroupId(), true);
-
-        List<FieldOptions> toSave = new ArrayList<>();
-        for (FieldOptionsValuesDTO.Option opt : dto.getOptions()) {
-            FieldOptions option = existingOptions.stream()
-                    .filter(e -> e.getOptionValue().equals(opt.getOptionValue()))
-                    .findFirst()
-                    .orElse(new FieldOptions());
-
-            option.setOptionGroupId(dto.getOptionGroupId());
-            option.setTenant(tenantsRepository.findById(dto.getTenantId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Tenant not found: " + dto.getTenantId())));
-            option.setApp(tablesRepository.findById(dto.getTableId())
-                    .map(MetadataTables::getApp)
-                    .orElseThrow(() -> new ResourceNotFoundException("Table not found: " + dto.getTableId())));
-            option.setTable(tablesRepository.findById(dto.getTableId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Table not found: " + dto.getTableId())));
-            option.setField(standardFieldsRepository.findById(dto.getFieldId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Field not found: " + dto.getFieldId())));
-            option.setOptionValue(opt.getOptionValue());
-            option.setDisplayName(opt.getDisplayName());
-            option.setIsActive(opt.getIsActive() != null ? opt.getIsActive() : true);
-            option.setSortOrder(opt.getSortOrder() != null ? opt.getSortOrder() : 0);
-            option.setUpdatedAt(LocalDateTime.now());
-
-            toSave.add(option);
-        }
-
-        // Deactivate removed options
-        existingOptions.stream()
-                .filter(e -> dto.getOptions().stream().noneMatch(o -> o.getOptionValue().equals(e.getOptionValue())))
-                .forEach(e -> {
-                    e.setIsActive(false);
-                    e.setUpdatedAt(LocalDateTime.now());
-                    toSave.add(e);
-                });
-
-        List<FieldOptions> saved = fieldOptionsRepository.saveAll(toSave);
-        // TODO: Invalidate cache
-        return saved.stream().map(FieldOptions::getOptionId).collect(Collectors.toList());
-    }
-
-    @Transactional
-    public void deleteFieldOptionsConfig(Integer optionConfigId) {
-        MetadataFieldOptions config = fieldOptionsConfigRepository.findById(optionConfigId)
-                .orElseThrow(() -> new ResourceNotFoundException("Config not found: " + optionConfigId));
-        config.setIsActive(false);
-        config.setUpdatedAt(LocalDateTime.now());
-        fieldOptionsConfigRepository.save(config);
-        // TODO: Invalidate cache
-    }
-
-    private void validateConfig(FieldOptionsConfigDTO dto) {
-        if (dto.getTenantId() == null || dto.getAppId() == null || dto.getTableId() == null || dto.getFieldId() == null) {
-            throw new ValidationException("TenantId, appId, tableId, and fieldId are required");
-        }
-        if (dto.getIsDropdown() && dto.getOptionGroupId() == null) {
-            throw new ValidationException("optionGroupId is required when isDropdown is true");
-        }
-        if (dto.getIsDropdown()) {
-            List<FieldOptions> options = fieldOptionsRepository
-                    .findByTenantIdAndAppIdAndTableIdAndFieldIdAndOptionGroupIdAndIsActive(
-                            dto.getTenantId(), dto.getAppId(), dto.getTableId(), dto.getFieldId(), dto.getOptionGroupId(), true);
-            if (options.isEmpty()) {
-                throw new ValidationException("No active options found for optionGroupId: " + dto.getOptionGroupId());
-            }
-        }
-    }
-
-    private void validateValues(FieldOptionsValuesDTO dto) {
-        if (dto.getOptionGroupId() == null || dto.getTenantId() == null || dto.getAppId() == null ||
-                dto.getTableId() == null || dto.getFieldId() == null || dto.getOptions() == null) {
-            throw new ValidationException("optionGroupId, tenantId, appId, tableId, fieldId, and options are required");
-        }
-        for (FieldOptionsValuesDTO.Option opt : dto.getOptions()) {
-            if (opt.getOptionValue() == null || opt.getOptionValue().isEmpty() ||
-                    opt.getDisplayName() == null || opt.getDisplayName().isEmpty()) {
-                throw new ValidationException("optionValue and displayName are required for all options");
-            }
-        }
-        long uniqueValues = dto.getOptions().stream().map(FieldOptionsValuesDTO.Option::getOptionValue).distinct().count();
-        if (uniqueValues != dto.getOptions().size()) {
-            throw new ValidationException("Duplicate optionValue found in options");
-        }
-    }
-
-    private String fetchCityByPinCode(String pinCode, Integer apiId) {
-        // Placeholder for API call
-        return "New York";
-    }
-
 
     public List<EmployeeDTO> getAllEmployees(Integer tenantId) {
         tenantsRepository.findById(tenantId)
@@ -833,5 +730,9 @@ public class MetadataService {
             return dto;
         }).collect(Collectors.toList());
     }
-}
 
+    private String fetchCityByPinCode(String pinCode, Integer apiId) {
+        // Placeholder for API call
+        return "New York";
+    }
+}

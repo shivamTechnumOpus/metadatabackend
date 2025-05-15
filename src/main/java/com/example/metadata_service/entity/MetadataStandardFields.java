@@ -78,9 +78,6 @@ public class MetadataStandardFields {
     @JsonIgnore
     private List<MetadataRelationships> targetRelationships;
 
-    @OneToMany(mappedBy = "field", fetch = FetchType.LAZY)
-    @JsonIgnore
-    private List<MetadataGroupFieldMapping> groupFieldMappings;
 
     @Override
     public String toString() {
