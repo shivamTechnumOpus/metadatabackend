@@ -14,11 +14,11 @@ public class MetadataOptionsTable {
     @Column(name = "options_table_id", nullable = false)
     private Integer optionsTableId;
 
-    @Column(name = "source_field_id")
-    private Integer sourceFieldId;
-
-    @Column(name = "option_key_id")
-    private Integer optionKeyId;
+//    @Column(name = "source_field_id")
+//    private Integer sourceFieldId;
+//
+//    @Column(name = "option_key_id")
+//    private Integer optionKeyId;
 
     @ManyToOne
     @JoinColumn(name = "options_source_id", nullable = false)

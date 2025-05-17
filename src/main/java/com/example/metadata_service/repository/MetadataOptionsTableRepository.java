@@ -4,5 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.Optional;
 
 public interface MetadataOptionsTableRepository extends JpaRepository<MetadataOptionsTable, Integer> {
-    Optional<MetadataOptionsTable> findByOptionsTableIdAndSourceFieldIdAndOptionKeyId(Integer optionsTableId, Integer sourceFieldId, Integer optionKeyId);
+//    Optional<MetadataOptionsTable> findByOptionsTableIdAndSourceFieldIdAndOptionKeyId(Integer optionsTableId, Integer sourceFieldId, Integer optionKeyId);
+
+    Optional<MetadataOptionsTable> findByTableOptionId(Integer tableOptionId);
 }
