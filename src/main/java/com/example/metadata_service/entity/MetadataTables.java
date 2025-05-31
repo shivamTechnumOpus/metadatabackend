@@ -133,9 +133,15 @@
 package com.example.metadata_service.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.commons.lang3.builder.ToStringBuilder;
+import org.apache.commons.lang3.builder.ToStringStyle;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.GenericGenerator;
 
 import java.util.HashSet;
@@ -144,7 +150,11 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "metadata_tables",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"table_code", "app_code"}))
+        uniqueConstraints = @UniqueConstraint(columnNames = {"table_code", "app_code"}),
+        indexes = {
+            @Index(name = "idx_tenant_code", columnList = "tenant_code"),
+            @Index(name = "idx_app_code", columnList = "app_code")
+        })
 @Getter
 @Setter
 public class MetadataTables extends BaseMetaDataEntity {
@@ -155,36 +165,42 @@ public class MetadataTables extends BaseMetaDataEntity {
     @Column(name = "table_id", updatable = false, nullable = false)
     private UUID tableId;
 
+    @NotNull
+    @Size(max = 50)
     @Column(name = "table_code", nullable = false)
     private String tableCode;
 
+    @Size(max = 100)
     @Column(name = "table_name")
-    private String tableName;
+    private String name;
 
+    @Size(max = 255)
     @Column(name = "description")
     private String description;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "app_code", referencedColumnName = "app_code", nullable = false)
+    @JsonIgnoreProperties({"tables"})
     private MetadataApp appCode;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "tenant_code", referencedColumnName = "tenant_code", nullable = false)
+    @JoinColumn(name = "tenant_code", referencedColumnName = "tenant_code", nullable = true)
+    @JsonIgnoreProperties({"tenantConfigs", "tables"})
     private MetadataTenants tenantCode;
 
     @OneToMany(mappedBy = "tableCode", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JsonIgnore
+    @BatchSize(size = 100)
     private Set<MetadataTableStructure> tableStructures = new HashSet<>();
 
     @Override
     public String toString() {
-        return "MetadataTable{" +
-                "tableId=" + tableId +
-                ", tableCode='" + tableCode + '\'' +
-                ", tableName='" + tableName + '\'' +
-                ", description='" + description + '\'' +
-                '}';
+        return new ToStringBuilder(this, ToStringStyle.SHORT_PREFIX_STYLE)
+                .append("tableId", tableId)
+                .append("tableCode", tableCode)
+                .append("name", name)
+                .append("description", description)
+                .append("isActive", getIsActive())
+                .build();
     }
 }
-
-

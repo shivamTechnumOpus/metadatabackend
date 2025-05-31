@@ -119,10 +119,16 @@ package com.example.metadata_service.entity;
 //}
 
 
+
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.commons.lang3.builder.ToStringBuilder;
+import org.apache.commons.lang3.builder.ToStringStyle;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.GenericGenerator;
 
 import java.util.HashSet;
@@ -130,7 +136,9 @@ import java.util.Set;
 import java.util.UUID;
 
 @Entity
-@Table(name = "metadata_tenants")
+@Table(name = "metadata_tenants", indexes = {
+    @Index(name = "idx_tenant_code", columnList = "tenant_code")
+})
 @Getter
 @Setter
 public class MetadataTenants extends BaseMetaDataEntity {
@@ -141,36 +149,41 @@ public class MetadataTenants extends BaseMetaDataEntity {
     @Column(name = "tenant_id", updatable = false, nullable = false)
     private UUID tenantId;
 
+    @NotNull
+    @Size(max = 50)
     @Column(name = "tenant_code", unique = true, nullable = false)
     private String tenantCode;
 
+    @Size(max = 100)
     @Column(name = "tenant_name")
     private String tenantName;
 
+    @Size(max = 255)
     @Column(name = "description")
     private String description;
 
+    @Size(max = 20)
     @Column(name = "status")
     private String status;
 
     @OneToMany(mappedBy = "tenant", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JsonIgnore
+    @BatchSize(size = 100)
     private Set<DatabaseConnection> tenantConfigs = new HashSet<>();
 
     @OneToMany(mappedBy = "tenantCode", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JsonIgnore
+    @BatchSize(size = 100)
     private Set<MetadataTables> tables = new HashSet<>();
 
     @Override
     public String toString() {
-        return "MetadataTenant{" +
-                "tenantId=" + tenantId +
-                ", tenantCode='" + tenantCode + '\'' +
-                ", tenantName='" + tenantName + '\'' +
-                ", description='" + description + '\'' +
-                ", status='" + status + '\'' +
-                '}';
+        return new ToStringBuilder(this, ToStringStyle.SHORT_PREFIX_STYLE)
+                .append("tenantId", tenantId)
+                .append("tenantCode", tenantCode)
+                .append("tenantName", tenantName)
+                .append("status", status)
+                .append("isActive", getIsActive())
+                .build();
     }
 }
-
-

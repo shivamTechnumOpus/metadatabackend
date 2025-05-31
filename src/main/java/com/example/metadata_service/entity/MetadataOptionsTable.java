@@ -31,15 +31,21 @@
 
 package com.example.metadata_service.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.commons.lang3.builder.ToStringBuilder;
+import org.apache.commons.lang3.builder.ToStringStyle;
 import org.hibernate.annotations.GenericGenerator;
 
 import java.util.UUID;
 
 @Entity
-@Table(name = "metadata_options_table")
+@Table(name = "metadata_options_table", indexes = {
+    @Index(name = "idx_tenant_code", columnList = "tenant_code"),
+    @Index(name = "idx_app_code", columnList = "app_code")
+})
 @Getter
 @Setter
 public class MetadataOptionsTable extends BaseMetaDataEntity {
@@ -55,16 +61,29 @@ public class MetadataOptionsTable extends BaseMetaDataEntity {
             @JoinColumn(name = "options_table_code", referencedColumnName = "table_code", nullable = false),
             @JoinColumn(name = "app_code", referencedColumnName = "app_code", nullable = false)
     })
-    private MetadataTables optionsTableCode;
+    @JsonIgnoreProperties({"tableStructures", "appCode", "tenantCode"})
+    private MetadataTables optionsTable;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "source_field_id", referencedColumnName = "field_id")
+    @JsonIgnoreProperties({"tableStructures", "groupFieldMappings"})
     private MetadataStandardFields sourceField;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "tenant_code", referencedColumnName = "tenant_code", nullable = true)
+    @JsonIgnoreProperties({"tenantConfigs", "tables"})
+    private MetadataTenants tenantCode;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "app_code", referencedColumnName = "app_code", nullable = false)
+    @JsonIgnoreProperties({"tables"})
+    private MetadataApp appCode;
 
     @Override
     public String toString() {
-        return "MetadataOptionsTable{" +
-                "tableOptionId=" + tableOptionId +
-                '}';
+        return new ToStringBuilder(this, ToStringStyle.SHORT_PREFIX_STYLE)
+                .append("tableOptionId", tableOptionId)
+                .append("isActive", getIsActive())
+                .build();
     }
 }

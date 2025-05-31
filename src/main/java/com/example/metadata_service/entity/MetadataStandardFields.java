@@ -179,16 +179,21 @@ package com.example.metadata_service.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.commons.lang3.builder.ToStringBuilder;
+import org.apache.commons.lang3.builder.ToStringStyle;
 import org.hibernate.annotations.GenericGenerator;
 
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
-
+import org.hibernate.annotations.BatchSize;
 @Entity
-@Table(name = "metadata_standard_fields")
+@Table(name = "metadata_standard_fields", indexes = {
+    @Index(name = "idx_field_name", columnList = "field_name")
+})
 @Getter
 @Setter
 public class MetadataStandardFields extends BaseMetaDataEntity {
@@ -199,24 +204,30 @@ public class MetadataStandardFields extends BaseMetaDataEntity {
     @Column(name = "field_id", updatable = false, nullable = false)
     private UUID fieldId;
 
+    @Size(max = 100)
     @Column(name = "field_name")
     private String fieldName;
 
+    @Size(max = 100)
     @Column(name = "display_name")
     private String displayName;
 
+    @Size(max = 50)
     @Column(name = "datatype")
     private String datatype;
 
     @Column(name = "field_type")
     private String fieldType;
 
+    @Size(max = 255)
     @Column(name = "help_text")
     private String helpText;
 
+    @Size(max = 255)
     @Column(name = "placeholder")
     private String placeholder;
 
+    @Size(max = 255)
     @Column(name = "default_value")
     private String defaultValue;
 
@@ -228,24 +239,23 @@ public class MetadataStandardFields extends BaseMetaDataEntity {
 
     @OneToMany(mappedBy = "field", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JsonIgnore
+    @BatchSize(size = 100)
     private Set<MetadataTableStructure> tableStructures = new HashSet<>();
 
     @OneToMany(mappedBy = "field", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JsonIgnore
+    @BatchSize(size = 100)
     private Set<MetadataGroupFieldMapping> groupFieldMappings = new HashSet<>();
 
     @Override
     public String toString() {
-        return "MetadataStandardField{" +
-                "fieldId=" + fieldId +
-                ", fieldName='" + fieldName + '\'' +
-                ", displayName='" + displayName + '\'' +
-                ", datatype='" + datatype + '\'' +
-                ", fieldType='" + fieldType + '\'' +
-                ", isRequired=" + isRequired +
-                ", isUnique=" + isUnique +
-                '}';
+        return new ToStringBuilder(this, ToStringStyle.SHORT_PREFIX_STYLE)
+                .append("fieldId", fieldId)
+                .append("fieldName", fieldName)
+                .append("displayName", displayName)
+                .append("fieldType", fieldType)
+                .append("isRequired", isRequired)
+                .append("isActive", getIsActive())
+                .build();
     }
 }
-
-

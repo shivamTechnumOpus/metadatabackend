@@ -40,21 +40,26 @@
 //}
 
 
-
 package com.example.metadata_service.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.commons.lang3.builder.ToStringBuilder;
+import org.apache.commons.lang3.builder.ToStringStyle;
 import org.hibernate.annotations.GenericGenerator;
-
+import org.hibernate.annotations.BatchSize;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
 @Entity
-@Table(name = "metadata_shared_database")
+@Table(name = "metadata_shared_database", indexes = {
+    @Index(name = "idx_database_name", columnList = "database_name")
+})
 @Getter
 @Setter
 public class MetadataSharedDatabase extends BaseMetaDataEntity {
@@ -65,33 +70,43 @@ public class MetadataSharedDatabase extends BaseMetaDataEntity {
     @Column(name = "shared_database_id", updatable = false, nullable = false)
     private UUID sharedDatabaseId;
 
-    @Column(name = "host")
+    @NotNull
+    @Size(max = 255)
+    @Column(name = "host", nullable = false)
     private String host;
 
-    @Column(name = "port")
+    @NotNull
+    @Column(name = "port", nullable = false)
     private Integer port;
 
-    @Column(name = "database_name")
+    @NotNull
+    @Size(max = 100)
+    @Column(name = "database_name", nullable = false)
     private String databaseName;
 
-    @Column(name = "username")
+    @NotNull
+    @Size(max = 100)
+    @Column(name = "username", nullable = false)
     private String username;
 
-    @Column(name = "password")
+    @JsonIgnore
+    @Size(max = 255)
+    @Column(name = "password", nullable = false)
     private String password;
 
     @OneToMany(mappedBy = "sharedDatabase", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JsonIgnore
+    @BatchSize(size = 100)
     private Set<DatabaseConnection> tenantConfigs = new HashSet<>();
 
     @Override
     public String toString() {
-        return "MetadataSharedDatabase{" +
-                "sharedDatabaseId=" + sharedDatabaseId +
-                ", host='" + host + '\'' +
-                ", port=" + port +
-                ", databaseName='" + databaseName + '\'' +
-                ", username='" + username + '\'' +
-                '}';
+        return new ToStringBuilder(this, ToStringStyle.SHORT_PREFIX_STYLE)
+                .append("sharedDatabaseId", sharedDatabaseId)
+                .append("host", host)
+                .append("port", port)
+                .append("databaseName", databaseName)
+                .append("isActive", getIsActive())
+                .build();
     }
 }

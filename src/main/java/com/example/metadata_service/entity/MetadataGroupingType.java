@@ -37,17 +37,23 @@
 
 package com.example.metadata_service.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.commons.lang3.builder.ToStringBuilder;
+import org.apache.commons.lang3.builder.ToStringStyle;
 import org.hibernate.annotations.GenericGenerator;
-
+import org.hibernate.annotations.BatchSize;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
 @Entity
-@Table(name = "grouping_type")
+@Table(name = "grouping_type", indexes = {
+    @Index(name = "idx_group_name", columnList = "group_name")
+})
 @Getter
 @Setter
 public class MetadataGroupingType extends BaseMetaDataEntity {
@@ -58,20 +64,21 @@ public class MetadataGroupingType extends BaseMetaDataEntity {
     @Column(name = "group_id", updatable = false, nullable = false)
     private UUID groupId;
 
+    @Size(max = 100)
     @Column(name = "group_name")
     private String groupName;
 
     @OneToMany(mappedBy = "group", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JsonIgnore
+    @BatchSize(size = 100)
     private Set<MetadataGroupFieldMapping> groupFieldMappings = new HashSet<>();
 
     @Override
     public String toString() {
-        return "MetadataGroupingType{" +
-                "groupId=" + groupId +
-                ", groupName='" + groupName + '\'' +
-                '}';
+        return new ToStringBuilder(this, ToStringStyle.SHORT_PREFIX_STYLE)
+                .append("groupId", groupId)
+                .append("groupName", groupName)
+                .append("isActive", getIsActive())
+                .build();
     }
 }
-
-
